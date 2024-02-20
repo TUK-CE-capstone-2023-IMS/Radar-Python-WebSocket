@@ -3,7 +3,18 @@ import struct
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.models import load_model
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib
 
+fig = plt.figure(figsize=(12, 6))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_title('3D Joint Data Visualization')
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.legend()
+matplotlib.use('TkAgg')
 
 SRS_SERVER_PORT = 29172 # 레이더 기본 포트
 SRS_MAX_POINT = 2000
@@ -57,7 +68,7 @@ def parse_data(data):
     points = []
     offset = 16
     for _ in range(point_num):
-        if len(data) - offset < 20:  # 데이터 길이가 충분하지 않으면 종료
+        if len(data) - offset < 20: 
             break 
         point_data = data[offset:offset+20]
         point = SRS_POINT_INFO(point_data)
@@ -69,7 +80,7 @@ def parse_data(data):
         target_num = struct.unpack('I', data[offset:offset+4])[0]
         offset += 4
         for _ in range(target_num):
-            if len(data) - offset < 32:  # 데이터 길이가 충분하지 않으면 종료
+            if len(data) - offset < 32:  
                 break  
             target_data = data[offset:offset+32]
             target = SRS_TARGET_INFO(target_data)
@@ -78,7 +89,7 @@ def parse_data(data):
 
     return points, targets
 
-def print_data(points, targets):   
+def print_data(points, targets, count):   
     point_array = []
     num_points = len(points)
     for i in range(500):
@@ -91,40 +102,44 @@ def print_data(points, targets):
     print("Points:")
     point_array = np.array(point_array)  # 리스트를 넘파이 배열로 변환
     point_array = np.expand_dims(point_array, axis=0)  # 새로운 축을 추가하여 (1, 500, 3)으로 만듦
-    #point_array = np.transpose(point_array, axes=(0, 2, 1))  # 축 순서를 바꿔 (1, 3, 500)으로 만듦
-    #print(point_array)
     print(np.shape(point_array))
     print()  # 빈 줄 추가
 
     model = load_model('C:/Users/sang1/Desktop/ps/CNN_Model_Skeleton.h5')
     # 모델 예측
     predictions = model.predict(point_array)
-    #print(predictions)
-    ##for i, target in enumerate(targets):
-      ##  status = SRS_TARGET_STATUS.get(target.status, "UNKNOWN")
-        ##print(f"Target {i}: ID={target.id}, X={target.posX}, Y={target.posY}, Status={status}")
+    print(predictions)  # 예측된 데이터의 모양 확인
+    sendToUnity(predictions)
+
+def sendToUnity(lmList):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    serverAddressPort = ("127.0.0.1", 5051)
+    # 스켈레톤 표현을 위해 lmList의 값에 가중치 곱해줌
+    lmList = np.array(lmList) * 1000
+    # lmList를 1차원 리스트로 변환
+    flattened_list = lmList.flatten().tolist()
+    
+    sock.sendto(str.encode(str(flattened_list)), serverAddressPort)
 
 def main():
+    COUNT = -1
     source_ip = "192.168.30.1"
-    count = 0
-   
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((source_ip, SRS_SERVER_PORT))
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1000000)
         print("Connected.")
 
         while True:
-            count = count + 1 
-            print(count)
+            COUNT = COUNT + 1 
+            print(COUNT)
             data, packet_size = read_packet(sock)
             if packet_size < -1:
                 print("Connection closed.")
                 break
             elif packet_size == 0:
                 continue
-
             points, targets = parse_data(data)
-            print_data(points, targets) 
-           
+            print_data(points, targets,COUNT) 
+
 if __name__ == "__main__":
     main()
